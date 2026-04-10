@@ -6,6 +6,7 @@ import joblib
 from datetime import datetime
 import uvicorn
 import random
+import speedtest
 
 # For live packet capture
 from scapy.all import sniff
@@ -178,6 +179,30 @@ def get_stats():
         "attack_count": attacks,
         "normal_count": normal
     }
+@app.get("/network")
+def get_network_stats():
+    try:
+        st = speedtest.Speedtest()
+        st.get_best_server()
+
+        download = st.download() / 1_000_000
+        upload = st.upload() / 1_000_000
+        ping = st.results.ping
+
+        return {
+            "download": round(download, 2),
+            "upload": round(upload, 2),
+            "ping": round(ping, 2)
+        }
+
+    except Exception as e:
+        # fallback (IMPORTANT for Render)
+        return {
+            "download": 0,
+            "upload": 0,
+            "ping": 0,
+            "error": "Speedtest failed on server"
+        }
 
 # =========================
 # RUN SERVER
