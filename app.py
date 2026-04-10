@@ -1,3 +1,4 @@
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 from pydantic import BaseModel
 import numpy as np
@@ -19,6 +20,13 @@ model = joblib.load("xgboost_multiclass_realistic.pkl")
 # =========================
 # INPUT SCHEMA
 # =========================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 class InputData(BaseModel):
     features: list
 
