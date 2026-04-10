@@ -7,16 +7,20 @@ from datetime import datetime
 import uvicorn
 import random
 import speedtest
+import threading
+import os
+import joblib
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+model_path = os.path.join(BASE_DIR, "xgboost_multiclass_realistic.pkl")
+
+model = joblib.load(model_path)
 
 # For live packet capture
 from scapy.all import sniff
 
 app = FastAPI(title="AI-Based Multiclass NIDS 🚀")
-
-# =========================
-# LOAD MODEL
-# =========================
-model = joblib.load("xgboost_multiclass_realistic.pkl")
 
 # =========================
 # INPUT SCHEMA
@@ -82,6 +86,45 @@ def extract_features_from_packet(packet):
         features.append(random.random())
 
     return features
+def start_sniffing():
+    print("🚀 Sniffing started...")
+
+    def packet_handler(packet):
+        try:
+            features = extract_features_from_packet(packet)
+            features_np = np.array(features).reshape(1, -1)
+
+            prediction = model.predict(features_np)
+
+            if len(prediction.shape) > 1:
+                predicted_class = int(np.argmax(prediction))
+            else:
+                predicted_class = int(prediction[0])
+
+            attack_type = attack_labels.get(predicted_class, "Unknown")
+            risk_level = get_risk_level(attack_type)
+            timestamp = datetime.now().isoformat()
+
+            log_entry = {
+                "attack_type": attack_type,
+                "risk_level": risk_level,
+                "timestamp": timestamp
+            }
+
+            logs.append(log_entry)
+
+            print("🔥 LIVE:", log_entry)
+
+        except Exception as e:
+            print("Error:", e)
+
+    sniff(prn=packet_handler, store=False)
+
+@app.on_event("startup")
+def startup_event():
+    thread = threading.Thread(target=start_sniffing)
+    thread.daemon = True
+    thread.start()
 
 # =========================
 # ROOT
@@ -174,10 +217,32 @@ def get_stats():
     attacks = len([l for l in logs if l["risk_level"] != "LOW"])
     normal = len([l for l in logs if l["risk_level"] == "LOW"])
 
+    # 🔥 attack distribution
+    attack_distribution = {}
+    for log in logs:
+        attack = log["attack_type"]
+        attack_distribution[attack] = attack_distribution.get(attack, 0) + 1
+
+    # 🔥 attacks over time (simple grouping)
+    attacks_over_time = []
+    time_map = {}
+
+    for log in logs:
+        time = log["timestamp"][:19]  # yyyy-mm-ddTHH:MM:SS
+        time_map[time] = time_map.get(time, 0) + 1
+
+    for t, count in time_map.items():
+        attacks_over_time.append({
+            "time": t,
+            "count": count
+        })
+
     return {
         "total_packets": total,
         "attack_count": attacks,
-        "normal_count": normal
+        "normal_count": normal,
+        "attack_distribution": attack_distribution,
+        "attacks_over_time": attacks_over_time
     }
 @app.get("/network")
 def get_network_stats():
